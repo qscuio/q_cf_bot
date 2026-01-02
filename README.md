@@ -20,21 +20,6 @@ A minimal example of a Telegram Bot running on a Cloudflare Worker.
 14. That's it, now you can send a text message to your Telegram bot
 15. That's it, now you can send a text message to your Telegram bot
 
-## Deployment via GitHub Actions
-
-You can automate the deployment using GitHub Actions.
-
-1.  **Configure Secrets**: Go to your GitHub repository settings -> Secrets and variables -> Actions, and add the following repository secrets:
-
-    - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API Token (Template: Edit Cloudflare Workers).
-    - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID.
-    - `ENV_BOT_TOKEN`: Your Telegram Bot Token.
-    - `ENV_BOT_SECRET`: A secret string for your webhook.
-
-2.  **Push to Main**: The workflow is configured to deploy automatically when you push to the `main` branch.
-
-**Note**: You do **NOT** need to write your token in the `bot.js` file. The `ENV_BOT_TOKEN` variable in the code is a placeholder that will be automatically populated with the value from your GitHub Secrets during deployment.
-
 The bot will send the original message back with `Echo:` prepended.
 If you want to change it, look at the function `onMessage()`. It receives a [Message](https://core.telegram.org/bots/api#message) object and sends a text back:
 
