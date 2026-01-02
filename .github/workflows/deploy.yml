@@ -26,9 +26,9 @@ jobs:
         run: |
           set +e  # Don't exit on error
           
-          # List existing namespaces
+          # List existing namespaces (new wrangler v3 syntax)
           echo "Listing existing namespaces..."
-          NAMESPACES=$(wrangler kv:namespace list --json 2>&1)
+          NAMESPACES=$(wrangler kv namespace list --json 2>&1)
           echo "Namespaces output: $NAMESPACES"
           
           # Check if BOT_SETTINGS exists
@@ -36,7 +36,7 @@ jobs:
           
           if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
             echo "Creating new KV namespace..."
-            CREATE_OUTPUT=$(wrangler kv:namespace create BOT_SETTINGS 2>&1)
+            CREATE_OUTPUT=$(wrangler kv namespace create BOT_SETTINGS 2>&1)
             echo "Create output: $CREATE_OUTPUT"
             KV_ID=$(echo "$CREATE_OUTPUT" | grep -oP 'id = "\K[^"]+' || echo "")
           fi
