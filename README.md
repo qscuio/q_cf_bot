@@ -5,6 +5,7 @@ A unified Telegram Bot running on Cloudflare Workers, combining features from mu
 ## Features
 
 - **Commands**: `/start`, `/help`, `/button2`, `/button4`, `/markdown`
+- **Gemini AI**: `/gemini <text>` or use the "Ask Gemini" button.
 - **Inline Buttons**: Interactive buttons with callback handling.
 - **Inline Query**: Search and send voice messages (requires KV Namespace).
 - **Reactions**: Randomly reacts to text messages.
@@ -33,6 +34,7 @@ A unified Telegram Bot running on Cloudflare Workers, combining features from mu
     - `CLOUDFLARE_ACCOUNT_ID`: Your Account ID (hex string).
     - `ENV_BOT_TOKEN`: Your Telegram Bot Token.
     - `ENV_BOT_SECRET`: A secret string (A-Z, a-z, 0-9, \_, -).
+    - `GEMINI_API_KEY`: Your Google Gemini API Key (from [Google AI Studio](https://aistudio.google.com/)).
 
 2.  **Push to Main**: Pushing to the `main` branch triggers deployment.
 
@@ -44,6 +46,7 @@ A unified Telegram Bot running on Cloudflare Workers, combining features from mu
 
 - **/start**: Shows the help message.
 - **/button2**: Sends a message with two buttons.
+- **/gemini <text>**: Ask Gemini AI a question (e.g., `/gemini Tell me a joke`).
 - **Inline Query**: Type `@YourBotName <query>` in any chat to search for voice messages (if KV is set up).
 - **Any Text**: The bot will react with a random emoji.
 

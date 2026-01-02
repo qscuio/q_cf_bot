@@ -21,6 +21,8 @@ jobs:
           secrets: |
             ENV_BOT_TOKEN
             ENV_BOT_SECRET
+            ENV_GEMINI_API_KEY
         env:
           ENV_BOT_TOKEN: ${{ secrets.ENV_BOT_TOKEN }}
           ENV_BOT_SECRET: ${{ secrets.ENV_BOT_SECRET }}
+          ENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

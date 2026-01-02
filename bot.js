@@ -5,6 +5,7 @@
 const TOKEN = ENV_BOT_TOKEN // Get it from @BotFather https://core.telegram.org/bots#6-botfather
 const WEBHOOK = '/endpoint'
 const SECRET = ENV_BOT_SECRET // A-Z, a-z, 0-9, _ and -
+const GEMINI_KEY = ENV_GEMINI_API_KEY // Get it from https://aistudio.google.com/
 
 const reactions_ = ['👍', '👎', '❤', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤‍🔥', '🌚', '🌭', '💯', '🤣', '⚡', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '😨', '🤝', '✍', '🤗', '🫡', '🎅', '🎄', '☃', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂', '🤷', '🤷‍♀', '😡']
 
@@ -69,14 +70,25 @@ function onMessage (message) {
         '/button2 - Sends a message with two button\n' +
         '/button4 - Sends a message with four buttons\n' +
         '/markdown - Sends some MarkdownV2 examples\n' +
+        '/gemini <text> - Ask Gemini AI\n' +
         'Any other text will trigger a random reaction!',
-        '`'))
+        '`'),
+        [
+          [{ text: 'Ask Gemini (Fun Fact)', callback_data: 'ask_gemini' }]
+        ]
+      )
   } else if (message.text && message.text.startsWith('/button2')) {
     return sendTwoButtons(message.chat.id)
   } else if (message.text && message.text.startsWith('/button4')) {
     return sendFourButtons(message.chat.id)
   } else if (message.text && message.text.startsWith('/markdown')) {
     return sendMarkdownExample(message.chat.id)
+  } else if (message.text && message.text.startsWith('/gemini')) {
+    const prompt = message.text.replace('/gemini', '').trim()
+    if (!prompt) {
+      return sendPlainText(message.chat.id, 'Please provide a prompt. Example: /gemini What is the moon?')
+    }
+    return handleGeminiRequest(message.chat.id, prompt)
   } else {
     // Random reaction for other messages
     return setMessageReaction(message)
@@ -88,6 +100,10 @@ function onMessage (message) {
  * https://core.telegram.org/bots/api#message
  */
 async function onCallbackQuery (callbackQuery) {
+  if (callbackQuery.data === 'ask_gemini') {
+    await answerCallbackQuery(callbackQuery.id, 'Asking Gemini...')
+    return handleGeminiRequest(callbackQuery.message.chat.id, 'Tell me a random fun fact.')
+  }
   await sendMarkdownV2Text(callbackQuery.message.chat.id, escapeMarkdown(`You pressed the button with data=\`${callbackQuery.data}\``, '`'))
   return answerCallbackQuery(callbackQuery.id, 'Button press acknowledged!')
 }
@@ -132,6 +148,55 @@ async function onInlineQuery (inlineQuery) {
 }
 
 // --- Helper Functions ---
+
+async function handleGeminiRequest(chatId, prompt) {
+  if (!GEMINI_KEY) {
+    return sendPlainText(chatId, 'Error: GEMINI_API_KEY is not set.')
+  }
+  
+  await sendPlainText(chatId, 'Thinking...')
+  
+  try {
+    const response = await callGemini(prompt)
+    // Gemini response is markdown, so we try to send as markdown, but fallback to plain text if it fails parsing
+    try {
+        await sendMarkdownV2Text(chatId, escapeMarkdown(response, '`'))
+    } catch (e) {
+        await sendPlainText(chatId, response)
+    }
+  } catch (error) {
+    await sendPlainText(chatId, `Error calling Gemini: ${error.message}`)
+  }
+}
+
+async function callGemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: prompt
+        }]
+      }]
+    })
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API Error: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts.length > 0) {
+    return data.candidates[0].content.parts[0].text
+  } else {
+    return 'No response from Gemini.'
+  }
+}
 
 function sendTwoButtons (chatId) {
   return sendInlineButtonRow(chatId, 'Press one of the two button', [{
@@ -202,12 +267,18 @@ async function sendPlainText (chatId, text) {
   }))).json()
 }
 
-async function sendMarkdownV2Text (chatId, text) {
-  return (await fetch(apiUrl('sendMessage', {
+async function sendMarkdownV2Text (chatId, text, buttons = null) {
+  const body = {
     chat_id: chatId,
     text,
     parse_mode: 'MarkdownV2'
-  }))).json()
+  }
+  if (buttons) {
+    body.reply_markup = JSON.stringify({
+      inline_keyboard: buttons
+    })
+  }
+  return (await fetch(apiUrl('sendMessage', body))).json()
 }
 
 function escapeMarkdown (str, except = '') {
