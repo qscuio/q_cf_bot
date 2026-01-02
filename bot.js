@@ -92,15 +92,17 @@ async function onMessage (message) {
       )
   } else if (message.text && message.text.startsWith('/models')) {
     const userModel = await getUserModel(chatId)
-    const modelList = Object.entries(AVAILABLE_MODELS)
-      .map(([shortName, fullName]) => `• <b>${shortName}</b> → ${fullName}${fullName === userModel ? ' ✅' : ''}`)
-      .join('\n')
-    return sendHtmlText(chatId, `<b>📋 Available Models:</b>\n\n${modelList}\n\n<i>Current: ${userModel}</i>\n<i>Usage: /setmodel flash-lite</i>`)
+    // Create buttons for each model
+    const modelButtons = Object.entries(AVAILABLE_MODELS).map(([shortName, fullName]) => [{
+      text: `${fullName === userModel ? '✅ ' : ''}${shortName}`,
+      callback_data: `set_model_${shortName}`
+    }])
+    return sendInlineButtons(chatId, `<b>📋 Select a Model:</b>\n\n<i>Current: ${userModel}</i>`, modelButtons, 'HTML')
   } else if (message.text && message.text.startsWith('/setmodel')) {
     const modelShortName = message.text.replace('/setmodel', '').trim()
     if (!modelShortName) {
       const userModel = await getUserModel(chatId)
-      return sendHtmlText(chatId, `<b>Current model:</b> ${userModel}\n\n<i>Usage: /setmodel flash-lite</i>`)
+      return sendHtmlText(chatId, `<b>Current model:</b> ${userModel}\n\n<i>Usage: /setmodel flash-lite or use /models</i>`)
     }
     if (!AVAILABLE_MODELS[modelShortName]) {
       return sendPlainText(chatId, `Unknown model: ${modelShortName}. Use /models to see available options.`)
@@ -149,11 +151,27 @@ async function setUserModel(chatId, model) {
  * https://core.telegram.org/bots/api#message
  */
 async function onCallbackQuery (callbackQuery) {
+  const chatId = callbackQuery.message.chat.id
+  
   if (callbackQuery.data === 'ask_gemini') {
     await answerCallbackQuery(callbackQuery.id, 'Asking Gemini...')
-    return handleGeminiRequest(callbackQuery.message.chat.id, 'Tell me a random fun fact.')
+    const userModel = await getUserModel(chatId)
+    return handleGeminiRequest(chatId, 'Tell me a random fun fact.', userModel)
   }
-  await sendMarkdownV2Text(callbackQuery.message.chat.id, escapeMarkdown(`You pressed the button with data=\`${callbackQuery.data}\``, '`'))
+  
+  // Handle model selection: set_model_flash, set_model_flash-lite, etc.
+  if (callbackQuery.data.startsWith('set_model_')) {
+    const modelShortName = callbackQuery.data.replace('set_model_', '')
+    if (AVAILABLE_MODELS[modelShortName]) {
+      await setUserModel(chatId, AVAILABLE_MODELS[modelShortName])
+      await answerCallbackQuery(callbackQuery.id, `Model set to ${modelShortName}!`)
+      return sendHtmlText(chatId, `✅ Model set to <b>${AVAILABLE_MODELS[modelShortName]}</b>`)
+    } else {
+      return answerCallbackQuery(callbackQuery.id, 'Unknown model.')
+    }
+  }
+  
+  await sendMarkdownV2Text(chatId, escapeMarkdown(`You pressed the button with data=\`${callbackQuery.data}\``, '`'))
   return answerCallbackQuery(callbackQuery.id, 'Button press acknowledged!')
 }
 
@@ -427,14 +445,18 @@ async function sendInlineButtonRow (chatId, text, buttonRow) {
   return sendInlineButtons(chatId, text, [buttonRow])
 }
 
-async function sendInlineButtons (chatId, text, buttons) {
-  return (await fetch(apiUrl('sendMessage', {
+async function sendInlineButtons (chatId, text, buttons, parseMode = null) {
+  const body = {
     chat_id: chatId,
     reply_markup: JSON.stringify({
       inline_keyboard: buttons
     }),
     text
-  }))).json()
+  }
+  if (parseMode) {
+    body.parse_mode = parseMode
+  }
+  return (await fetch(apiUrl('sendMessage', body))).json()
 }
 
 async function answerCallbackQuery (callbackQueryId, text = null) {
