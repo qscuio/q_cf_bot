@@ -85,12 +85,15 @@ jobs:
       
       - name: Register Webhook and Commands
         run: |
-          WORKER_URL="https://telegram-bot-cloudflare.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          # Format: https://<worker-name>.<subdomain>.workers.dev
+          WORKER_URL="https://telegram-bot-cloudflare.${{ secrets.WORKERS_SUBDOMAIN }}.workers.dev"
+          
+          echo "Worker URL: $WORKER_URL"
           
           echo "Registering webhook..."
-          WEBHOOK_RESULT=$(curl -s "$WORKER_URL/registerWebhook")
+          WEBHOOK_RESULT=$(curl -s --max-time 30 "$WORKER_URL/registerWebhook" || echo "curl failed")
           echo "Webhook result: $WEBHOOK_RESULT"
           
           echo "Registering commands..."
-          COMMANDS_RESULT=$(curl -s "$WORKER_URL/registerCommands")
+          COMMANDS_RESULT=$(curl -s --max-time 30 "$WORKER_URL/registerCommands" || echo "curl failed")
           echo "Commands result: $COMMANDS_RESULT"
