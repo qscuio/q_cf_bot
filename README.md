@@ -94,7 +94,6 @@ Open your bot in Telegram and send `/start`!
 | `/ai <text>`        | Ask AI (uses your selected provider/model) |
 | `/providers`        | List/select AI providers                   |
 | `/models`           | List/select models for current provider    |
-| `/button2`          | Demo: Two inline buttons                   |
 
 ---
 
@@ -144,4 +143,4 @@ KV namespace might not be configured. Check GitHub Actions logs.
 
 ## License
 
-CC0-1.0
+MIT

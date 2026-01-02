@@ -129,7 +129,6 @@ async function onMessage (message) {
         '/ai <text> - Ask AI (uses your selected provider)\n' +
         '/providers - List/select AI providers\n' +
         '/models - List/select models for current provider\n' +
-        '/button2 - Sends two buttons\n' +
         'Any other text will trigger a random reaction!',
         '`'),
         [
@@ -138,7 +137,6 @@ async function onMessage (message) {
       )
   } else if (message.text && message.text.startsWith('/providers')) {
     const userProvider = await getUserProvider(chatId)
-    // Create buttons for each provider
     const providerButtons = Object.entries(PROVIDERS).map(([key, provider]) => [{
       text: `${key === userProvider ? '✅ ' : ''}${provider.name}`,
       callback_data: `set_provider_${key}`
@@ -151,16 +149,11 @@ async function onMessage (message) {
     if (!provider) {
       return sendPlainText(chatId, 'Invalid provider selected.')
     }
-    // Create buttons for each model in the current provider
     const modelButtons = Object.entries(provider.models).map(([shortName, fullName]) => [{
       text: `${fullName === userModel ? '✅ ' : ''}${shortName}`,
       callback_data: `set_model_${shortName}`
     }])
     return sendInlineButtons(chatId, `<b>📋 ${provider.name} Models:</b>\n\n<i>Current: ${userModel}</i>`, modelButtons, 'HTML')
-  } else if (message.text && message.text.startsWith('/button2')) {
-    return sendTwoButtons(chatId)
-  } else if (message.text && message.text.startsWith('/button4')) {
-    return sendFourButtons(chatId)
   } else if (message.text && message.text.startsWith('/ai')) {
     const prompt = message.text.replace('/ai', '').trim()
     if (!prompt) {
@@ -168,7 +161,6 @@ async function onMessage (message) {
     }
     return handleAIRequest(chatId, prompt)
   } else {
-    // Random reaction for other messages
     return setMessageReaction(message)
   }
 }
@@ -511,45 +503,6 @@ function markdownToHtml(str) {
     .replace(/^\s*(\d+)\.\s+(.+)$/gm, '$1. $2')
 }
 
-function sendTwoButtons (chatId) {
-  return sendInlineButtonRow(chatId, 'Press one of the two button', [{
-    text: 'Button One',
-    callback_data: 'data_1'
-  }, {
-    text: 'Button Two',
-    callback_data: 'data_2'
-  }])
-}
-
-function sendFourButtons (chatId) {
-  return sendInlineButtons(chatId, 'Press a button', [
-    [
-      {
-        text: 'Button top left',
-        callback_data: 'Utah'
-      }, {
-        text: 'Button top right',
-        callback_data: 'Colorado'
-      }
-    ],
-    [
-      {
-        text: 'Button bottom left',
-        callback_data: 'Arizona'
-      }, {
-        text: 'Button bottom right',
-        callback_data: 'New Mexico'
-      }
-    ]
-  ])
-}
-
-async function sendMarkdownExample (chatId) {
-  await sendMarkdownV2Text(chatId, 'This is *bold* and this is _italic_')
-  await sendMarkdownV2Text(chatId, escapeMarkdown('You can write it like this: *bold* and _italic_'))
-  return sendMarkdownV2Text(chatId, escapeMarkdown('...but users may write ** and __ e.g. `**bold**` and `__italic__`', '`'))
-}
-
 async function setMessageReaction (message) {
   const reaction_ = []
   const min = 0
@@ -572,6 +525,7 @@ async function setMessageReaction (message) {
     is_big: big
   }))).json()
 }
+
 
 async function sendPlainText (chatId, text) {
   return (await fetch(apiUrl('sendMessage', {
@@ -665,8 +619,7 @@ async function registerCommands() {
     { command: 'help', description: 'Show help message' },
     { command: 'ai', description: 'Ask AI a question' },
     { command: 'providers', description: 'Select AI provider' },
-    { command: 'models', description: 'Select AI model' },
-    { command: 'button2', description: 'Show two buttons' }
+    { command: 'models', description: 'Select AI model' }
   ]
   
   const r = await fetch(`https://api.telegram.org/bot${TOKEN}/setMyCommands`, {
