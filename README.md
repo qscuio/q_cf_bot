@@ -18,8 +18,22 @@ A minimal example of a Telegram Bot running on a Cloudflare Worker.
 12. In the middle panel append `/registerWebhook` to the url. For example: https://my-worker-123.username.workers.dev/registerWebhook
 13. Click "Send". In the right panel should appear `Ok`. If 401 Unauthorized appears, you may have used a wrong bot token.
 14. That's it, now you can send a text message to your Telegram bot
+15. That's it, now you can send a text message to your Telegram bot
 
-## Bot behaviour
+## Deployment via GitHub Actions
+
+You can automate the deployment using GitHub Actions.
+
+1.  **Configure Secrets**: Go to your GitHub repository settings -> Secrets and variables -> Actions, and add the following repository secrets:
+
+    - `CLOUDFLARE_API_TOKEN`: Your Cloudflare API Token (Template: Edit Cloudflare Workers).
+    - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare Account ID.
+    - `ENV_BOT_TOKEN`: Your Telegram Bot Token.
+    - `ENV_BOT_SECRET`: A secret string for your webhook.
+
+2.  **Push to Main**: The workflow is configured to deploy automatically when you push to the `main` branch.
+
+**Note**: You do **NOT** need to write your token in the `bot.js` file. The `ENV_BOT_TOKEN` variable in the code is a placeholder that will be automatically populated with the value from your GitHub Secrets during deployment.
 
 The bot will send the original message back with `Echo:` prepended.
 If you want to change it, look at the function `onMessage()`. It receives a [Message](https://core.telegram.org/bots/api#message) object and sends a text back:
@@ -29,8 +43,8 @@ If you want to change it, look at the function `onMessage()`. It receives a [Mes
  * Handle incoming Message
  * https://core.telegram.org/bots/api#message
  */
-function onMessage (message) {
-  return sendPlainText(message.chat.id, 'Echo:\n' + message.text)
+function onMessage(message) {
+  return sendPlainText(message.chat.id, "Echo:\n" + message.text);
 }
 ```
 
@@ -46,33 +60,30 @@ The file [bot3.js](bot3.js) contains an improved version that replies inline que
 The voice messages should be stored in OPUS format and .ogg in the cloud you most like.
 The audio files are listed in a JSON array with the following structure in a KV namespace called `NAMESPACE` and with following content under the key `input_files`.
 
-Go to *Workers & Pages* -> *KV* and create a new namespace. Add a new key `input_files` and store the JSON structure from below with your own audio files.
+Go to _Workers & Pages_ -> _KV_ and create a new namespace. Add a new key `input_files` and store the JSON structure from below with your own audio files.
 
-Now in *Overview* -> your-worker -> *Settings* -> *Variables* -> *KV Namespace Bindings* bind the namespace to a variable called `NAMESPACE`.
+Now in _Overview_ -> your-worker -> _Settings_ -> _Variables_ -> _KV Namespace Bindings_ bind the namespace to a variable called `NAMESPACE`.
 
 ```javascript
- [
-    [
-      "File Name",
-      "URL",
-      duration,
-      "<tg-spoiler> caption </tg-spoiler>"
-    ],
-    [
-      "test",
-      "https://example.com/my_file.ogg",
-      5,
-      "<tg-spoiler>Description in a spoiler</tg-spoiler>"
-    ],
-  ]
+[
+  ["File Name", "URL", duration, "<tg-spoiler> caption </tg-spoiler>"],
+  [
+    "test",
+    "https://example.com/my_file.ogg",
+    5,
+    "<tg-spoiler>Description in a spoiler</tg-spoiler>",
+  ],
+];
 ```
-## bot4.js
-The bot4 is a bot that randomly reacts to messages received. It demostrates how to use big reactions when the 🎉 emoji gets chosen.
 
+## bot4.js
+
+The bot4 is a bot that randomly reacts to messages received. It demostrates how to use big reactions when the 🎉 emoji gets chosen.
 
 ## License
 
 The source-code is licensed under the CC0-1.0 license. If you need a different license, there are also branches with the [MIT](https://github.com/cvzi/telegram-bot-cloudflare/tree/mit) and [GPL 3](https://github.com/cvzi/telegram-bot-cloudflare/tree/gnu-gpl-v3-or-later) license.
 
 ---
+
 [![JavaScript Style Guide](https://cdn.rawgit.com/standard/standard/master/badge.svg)](https://github.com/standard/standard)

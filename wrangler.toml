@@ -1,0 +1,6 @@
+name = "telegram-bot-cloudflare"
+main = "bot.js"
+compatibility_date = "2023-10-01"
+
+[vars]
+# Public variables can go here, but secrets should be set via `wrangler secret put` or GitHub Secrets
