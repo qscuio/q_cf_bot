@@ -28,6 +28,8 @@ addEventListener('fetch', event => {
     event.respondWith(registerWebhook(event, url, WEBHOOK, SECRET))
   } else if (url.pathname === '/unRegisterWebhook') {
     event.respondWith(unRegisterWebhook(event))
+  } else if (url.pathname === '/registerCommands') {
+    event.respondWith(registerCommands())
   } else {
     event.respondWith(new Response('No handler for this request'))
   }
@@ -70,19 +72,18 @@ async function onUpdate (update) {
  * Handle incoming Message
  * https://core.telegram.org/bots/api#message
  */
-function onMessage (message) {
+async function onMessage (message) {
+  const chatId = message.chat.id
+  
   if (message.text && (message.text.startsWith('/start') || message.text.startsWith('/help'))) {
-    return sendMarkdownV2Text(message.chat.id, '*Functions:*\n' +
+    return sendMarkdownV2Text(chatId, '*Functions:*\n' +
       escapeMarkdown(
         '`/help` - This message\n' +
-        '/button2 - Sends a message with two button\n' +
-        '/button4 - Sends a message with four buttons\n' +
-        '/markdown - Sends some MarkdownV2 examples\n' +
-        '/gemini <text> - Ask Gemini AI (default model)\n' +
-        '/gemini:flash <text> - Use gemini-2.5-flash\n' +
-        '/gemini:flash-lite <text> - Use gemini-2.5-flash-lite\n' +
-        '/gemini:3-flash <text> - Use gemini-3-flash\n' +
+        '/gemini <text> - Ask Gemini AI\n' +
+        '/setmodel <model> - Set your default model\n' +
         '/models - List available models\n' +
+        '/button2 - Sends two buttons\n' +
+        '/button4 - Sends four buttons\n' +
         'Any other text will trigger a random reaction!',
         '`'),
         [
@@ -90,44 +91,58 @@ function onMessage (message) {
         ]
       )
   } else if (message.text && message.text.startsWith('/models')) {
+    const userModel = await getUserModel(chatId)
     const modelList = Object.entries(AVAILABLE_MODELS)
-      .map(([shortName, fullName]) => `• <b>${shortName}</b> → ${fullName}`)
+      .map(([shortName, fullName]) => `• <b>${shortName}</b> → ${fullName}${fullName === userModel ? ' ✅' : ''}`)
       .join('\n')
-    return sendHtmlText(message.chat.id, `<b>📋 Available Models:</b>\n\n${modelList}\n\n<i>Usage: /gemini:flash-lite Your question here</i>`)
+    return sendHtmlText(chatId, `<b>📋 Available Models:</b>\n\n${modelList}\n\n<i>Current: ${userModel}</i>\n<i>Usage: /setmodel flash-lite</i>`)
+  } else if (message.text && message.text.startsWith('/setmodel')) {
+    const modelShortName = message.text.replace('/setmodel', '').trim()
+    if (!modelShortName) {
+      const userModel = await getUserModel(chatId)
+      return sendHtmlText(chatId, `<b>Current model:</b> ${userModel}\n\n<i>Usage: /setmodel flash-lite</i>`)
+    }
+    if (!AVAILABLE_MODELS[modelShortName]) {
+      return sendPlainText(chatId, `Unknown model: ${modelShortName}. Use /models to see available options.`)
+    }
+    await setUserModel(chatId, AVAILABLE_MODELS[modelShortName])
+    return sendHtmlText(chatId, `✅ Model set to <b>${AVAILABLE_MODELS[modelShortName]}</b>`)
   } else if (message.text && message.text.startsWith('/button2')) {
-    return sendTwoButtons(message.chat.id)
+    return sendTwoButtons(chatId)
   } else if (message.text && message.text.startsWith('/button4')) {
-    return sendFourButtons(message.chat.id)
+    return sendFourButtons(chatId)
   } else if (message.text && message.text.startsWith('/markdown')) {
-    return sendMarkdownExample(message.chat.id)
+    return sendMarkdownExample(chatId)
   } else if (message.text && message.text.startsWith('/gemini')) {
-    // Parse model selection: /gemini:flash-lite prompt OR /gemini prompt
-    const match = message.text.match(/^\/gemini(?::(\S+))?\s*(.*)$/)
-    if (!match) {
-      return sendPlainText(message.chat.id, 'Invalid command format.')
-    }
-    const modelShortName = match[1] // e.g., "flash-lite" or undefined
-    const prompt = match[2].trim()
-    
+    const prompt = message.text.replace('/gemini', '').trim()
     if (!prompt) {
-      return sendPlainText(message.chat.id, 'Please provide a prompt. Example: /gemini What is the moon?')
+      return sendPlainText(chatId, 'Please provide a prompt. Example: /gemini What is the moon?')
     }
-    
-    let modelToUse = DEFAULT_MODEL
-    if (modelShortName) {
-      if (AVAILABLE_MODELS[modelShortName]) {
-        modelToUse = AVAILABLE_MODELS[modelShortName]
-      } else {
-        return sendPlainText(message.chat.id, `Unknown model: ${modelShortName}. Use /models to see available options.`)
-      }
-    }
-    
-    return handleGeminiRequest(message.chat.id, prompt, modelToUse)
+    const userModel = await getUserModel(chatId)
+    return handleGeminiRequest(chatId, prompt, userModel)
   } else {
     // Random reaction for other messages
     return setMessageReaction(message)
   }
 }
+
+// --- User Model Storage (using KV) ---
+
+async function getUserModel(chatId) {
+  if (typeof NAMESPACE === 'undefined') {
+    return DEFAULT_MODEL
+  }
+  const model = await NAMESPACE.get(`model_${chatId}`)
+  return model || DEFAULT_MODEL
+}
+
+async function setUserModel(chatId, model) {
+  if (typeof NAMESPACE === 'undefined') {
+    throw new Error('KV NAMESPACE not configured. Cannot save model preference.')
+  }
+  await NAMESPACE.put(`model_${chatId}`, model)
+}
+
 
 /**
  * Handle incoming callback_query (inline button press)
@@ -456,4 +471,29 @@ function apiUrl (methodName, params = null) {
     query = '?' + new URLSearchParams(params).toString()
   }
   return `https://api.telegram.org/bot${TOKEN}/${methodName}${query}`
+}
+
+/**
+ * Register bot commands for autocomplete
+ * https://core.telegram.org/bots/api#setmycommands
+ */
+async function registerCommands() {
+  const commands = [
+    { command: 'start', description: 'Show help message' },
+    { command: 'help', description: 'Show help message' },
+    { command: 'gemini', description: 'Ask Gemini AI' },
+    { command: 'setmodel', description: 'Set your default AI model' },
+    { command: 'models', description: 'List available AI models' },
+    { command: 'button2', description: 'Show two buttons' },
+    { command: 'button4', description: 'Show four buttons' }
+  ]
+  
+  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/setMyCommands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commands })
+  })
+  
+  const result = await r.json()
+  return new Response(result.ok ? 'Commands registered!' : JSON.stringify(result, null, 2))
 }
