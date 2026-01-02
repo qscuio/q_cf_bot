@@ -7,6 +7,14 @@ const WEBHOOK = '/endpoint'
 const SECRET = ENV_BOT_SECRET // A-Z, a-z, 0-9, _ and -
 const GEMINI_KEY = ENV_GEMINI_API_KEY // Get it from https://aistudio.google.com/
 
+// Available Gemini models
+const AVAILABLE_MODELS = {
+  'flash': 'gemini-2.5-flash',
+  'flash-lite': 'gemini-2.5-flash-lite',
+  '3-flash': 'gemini-3-flash'
+}
+const DEFAULT_MODEL = 'gemini-2.5-flash'
+
 const reactions_ = ['👍', '👎', '❤', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤‍🔥', '🌚', '🌭', '💯', '🤣', '⚡', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '😨', '🤝', '✍', '🤗', '🫡', '🎅', '🎄', '☃', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂', '🤷', '🤷‍♀', '😡']
 
 /**
@@ -70,13 +78,22 @@ function onMessage (message) {
         '/button2 - Sends a message with two button\n' +
         '/button4 - Sends a message with four buttons\n' +
         '/markdown - Sends some MarkdownV2 examples\n' +
-        '/gemini <text> - Ask Gemini AI\n' +
+        '/gemini <text> - Ask Gemini AI (default model)\n' +
+        '/gemini:flash <text> - Use gemini-2.5-flash\n' +
+        '/gemini:flash-lite <text> - Use gemini-2.5-flash-lite\n' +
+        '/gemini:3-flash <text> - Use gemini-3-flash\n' +
+        '/models - List available models\n' +
         'Any other text will trigger a random reaction!',
         '`'),
         [
           [{ text: 'Ask Gemini (Fun Fact)', callback_data: 'ask_gemini' }]
         ]
       )
+  } else if (message.text && message.text.startsWith('/models')) {
+    const modelList = Object.entries(AVAILABLE_MODELS)
+      .map(([shortName, fullName]) => `• <b>${shortName}</b> → ${fullName}`)
+      .join('\n')
+    return sendHtmlText(message.chat.id, `<b>📋 Available Models:</b>\n\n${modelList}\n\n<i>Usage: /gemini:flash-lite Your question here</i>`)
   } else if (message.text && message.text.startsWith('/button2')) {
     return sendTwoButtons(message.chat.id)
   } else if (message.text && message.text.startsWith('/button4')) {
@@ -84,11 +101,28 @@ function onMessage (message) {
   } else if (message.text && message.text.startsWith('/markdown')) {
     return sendMarkdownExample(message.chat.id)
   } else if (message.text && message.text.startsWith('/gemini')) {
-    const prompt = message.text.replace('/gemini', '').trim()
+    // Parse model selection: /gemini:flash-lite prompt OR /gemini prompt
+    const match = message.text.match(/^\/gemini(?::(\S+))?\s*(.*)$/)
+    if (!match) {
+      return sendPlainText(message.chat.id, 'Invalid command format.')
+    }
+    const modelShortName = match[1] // e.g., "flash-lite" or undefined
+    const prompt = match[2].trim()
+    
     if (!prompt) {
       return sendPlainText(message.chat.id, 'Please provide a prompt. Example: /gemini What is the moon?')
     }
-    return handleGeminiRequest(message.chat.id, prompt)
+    
+    let modelToUse = DEFAULT_MODEL
+    if (modelShortName) {
+      if (AVAILABLE_MODELS[modelShortName]) {
+        modelToUse = AVAILABLE_MODELS[modelShortName]
+      } else {
+        return sendPlainText(message.chat.id, `Unknown model: ${modelShortName}. Use /models to see available options.`)
+      }
+    }
+    
+    return handleGeminiRequest(message.chat.id, prompt, modelToUse)
   } else {
     // Random reaction for other messages
     return setMessageReaction(message)
@@ -149,15 +183,15 @@ async function onInlineQuery (inlineQuery) {
 
 // --- Helper Functions ---
 
-async function handleGeminiRequest(chatId, prompt) {
+async function handleGeminiRequest(chatId, prompt, model = DEFAULT_MODEL) {
   if (!GEMINI_KEY) {
     return sendPlainText(chatId, 'Error: GEMINI_API_KEY is not set.')
   }
   
-  await sendPlainText(chatId, '🤔 Thinking...')
+  await sendPlainText(chatId, `🤔 Thinking... (using ${model})`)
   
   try {
-    const { thinking, response } = await callGemini(prompt)
+    const { thinking, response } = await callGemini(prompt, model)
     
     // Send thinking process if available (collapsed/shorter)
     if (thinking) {
@@ -177,8 +211,8 @@ async function handleGeminiRequest(chatId, prompt) {
   }
 }
 
-async function callGemini(prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
+async function callGemini(prompt, model = DEFAULT_MODEL) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 55000) // 55s timeout
 
