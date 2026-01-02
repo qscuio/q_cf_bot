@@ -82,3 +82,15 @@ jobs:
           ENV_BOT_TOKEN: ${{ secrets.ENV_BOT_TOKEN }}
           ENV_BOT_SECRET: ${{ secrets.ENV_BOT_SECRET }}
           ENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      
+      - name: Register Webhook and Commands
+        run: |
+          WORKER_URL="https://telegram-bot-cloudflare.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          
+          echo "Registering webhook..."
+          WEBHOOK_RESULT=$(curl -s "$WORKER_URL/registerWebhook")
+          echo "Webhook result: $WEBHOOK_RESULT"
+          
+          echo "Registering commands..."
+          COMMANDS_RESULT=$(curl -s "$WORKER_URL/registerCommands")
+          echo "Commands result: $COMMANDS_RESULT"
