@@ -13,44 +13,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Wrangler
-        run: npm install -g wrangler
-      
-      - name: Create or Get KV Namespace
+      - name: Create or Get KV Namespace via API
         id: kv
         run: |
-          set +e  # Don't exit on error
+          # Use Cloudflare API directly (more reliable)
+          echo "Listing existing KV namespaces..."
           
-          # List existing namespaces (new wrangler v3 syntax)
-          echo "Listing existing namespaces..."
-          NAMESPACES=$(wrangler kv namespace list --json 2>&1)
-          echo "Namespaces output: $NAMESPACES"
+          RESPONSE=$(curl -s -X GET "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Content-Type: application/json")
           
-          # Check if BOT_SETTINGS exists
-          KV_ID=$(echo "$NAMESPACES" | jq -r '.[] | select(.title | contains("BOT_SETTINGS")) | .id' 2>/dev/null | head -1)
+          echo "API Response: $RESPONSE"
+          
+          # Check if BOT_SETTINGS namespace exists
+          KV_ID=$(echo "$RESPONSE" | jq -r '.result[] | select(.title == "BOT_SETTINGS") | .id' 2>/dev/null | head -1)
           
           if [ -z "$KV_ID" ] || [ "$KV_ID" = "null" ]; then
             echo "Creating new KV namespace..."
-            CREATE_OUTPUT=$(wrangler kv namespace create BOT_SETTINGS 2>&1)
-            echo "Create output: $CREATE_OUTPUT"
-            KV_ID=$(echo "$CREATE_OUTPUT" | grep -oP 'id = "\K[^"]+' || echo "")
+            CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/storage/kv/namespaces" \
+              -H "Authorization: Bearer $API_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data '{"title":"BOT_SETTINGS"}')
+            
+            echo "Create Response: $CREATE_RESPONSE"
+            KV_ID=$(echo "$CREATE_RESPONSE" | jq -r '.result.id' 2>/dev/null)
           fi
           
           echo "KV Namespace ID: $KV_ID"
           echo "KV_NAMESPACE_ID=$KV_ID" >> $GITHUB_OUTPUT
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       
       - name: Update wrangler.toml with KV binding
         run: |
           KV_ID="${{ steps.kv.outputs.KV_NAMESPACE_ID }}"
-          if [ -n "$KV_ID" ]; then
+          if [ -n "$KV_ID" ] && [ "$KV_ID" != "null" ]; then
             cat > wrangler.toml << EOF
           name = "telegram-bot-cloudflare"
           main = "bot.js"
