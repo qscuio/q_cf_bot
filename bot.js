@@ -154,16 +154,21 @@ async function handleGeminiRequest(chatId, prompt) {
     return sendPlainText(chatId, 'Error: GEMINI_API_KEY is not set.')
   }
   
-  await sendPlainText(chatId, 'Thinking...')
+  await sendPlainText(chatId, '🤔 Thinking...')
   
   try {
-    const response = await callGemini(prompt)
-    // Gemini response is markdown, so we try to send as markdown, but fallback to plain text if it fails parsing
-    try {
-        await sendMarkdownV2Text(chatId, escapeMarkdown(response, '`'))
-    } catch (e) {
-        // Fallback to plain text, splitting if necessary
-        await sendLongPlainText(chatId, response)
+    const { thinking, response } = await callGemini(prompt)
+    
+    // Send thinking process if available
+    if (thinking) {
+      await sendLongPlainText(chatId, `💭 Thinking Process:\n${thinking}`)
+    }
+    
+    // Send the main response
+    if (response) {
+      await sendLongPlainText(chatId, `💬 Response:\n${response}`)
+    } else {
+      await sendPlainText(chatId, 'No response from Gemini.')
     }
   } catch (error) {
     await sendPlainText(chatId, `Error calling Gemini: ${error.message}`)
@@ -173,7 +178,7 @@ async function handleGeminiRequest(chatId, prompt) {
 async function callGemini(prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 25000) // 25s timeout (Cloudflare worker limit is usually 30s)
+  const timeoutId = setTimeout(() => controller.abort(), 55000) // 55s timeout
 
   try {
     const response = await fetch(url, {
@@ -183,10 +188,16 @@ async function callGemini(prompt) {
       },
       body: JSON.stringify({
         contents: [{
+          role: 'user',
           parts: [{
             text: prompt
           }]
-        }]
+        }],
+        generationConfig: {
+          thinkingConfig: {
+            thinkingBudget: 1024 // Enable thinking with a budget
+          }
+        }
       }),
       signal: controller.signal
     })
@@ -197,11 +208,21 @@ async function callGemini(prompt) {
     }
     
     const data = await response.json()
-    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts.length > 0) {
-      return data.candidates[0].content.parts[0].text
-    } else {
-      return 'No response from Gemini.'
+    
+    let thinkingContent = ''
+    let responseContent = ''
+    
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts) {
+      for (const part of data.candidates[0].content.parts) {
+        if (part.thought === true) {
+          thinkingContent += part.text + '\n'
+        } else if (part.text) {
+          responseContent += part.text + '\n'
+        }
+      }
     }
+    
+    return { thinking: thinkingContent.trim(), response: responseContent.trim() }
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error('Request timed out.')
