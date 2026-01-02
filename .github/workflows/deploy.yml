@@ -78,11 +78,15 @@ jobs:
             ENV_BOT_TOKEN
             ENV_BOT_SECRET
             ENV_GEMINI_API_KEY
+            ENV_OPENAI_API_KEY
+            ENV_CLAUDE_API_KEY
             ENV_ALLOWED_USERS
         env:
           ENV_BOT_TOKEN: ${{ secrets.ENV_BOT_TOKEN }}
           ENV_BOT_SECRET: ${{ secrets.ENV_BOT_SECRET }}
           ENV_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ENV_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ENV_CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
           ENV_ALLOWED_USERS: ${{ secrets.ALLOWED_USERS }}
       
       - name: Register Webhook and Commands

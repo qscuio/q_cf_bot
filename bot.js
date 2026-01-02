@@ -5,19 +5,47 @@
 const TOKEN = ENV_BOT_TOKEN // Get it from @BotFather https://core.telegram.org/bots#6-botfather
 const WEBHOOK = '/endpoint'
 const SECRET = ENV_BOT_SECRET // A-Z, a-z, 0-9, _ and -
-const GEMINI_KEY = ENV_GEMINI_API_KEY // Get it from https://aistudio.google.com/
+
+// API Keys for different providers
+const GEMINI_KEY = typeof ENV_GEMINI_API_KEY !== 'undefined' ? ENV_GEMINI_API_KEY : ''
+const OPENAI_KEY = typeof ENV_OPENAI_API_KEY !== 'undefined' ? ENV_OPENAI_API_KEY : ''
+const CLAUDE_KEY = typeof ENV_CLAUDE_API_KEY !== 'undefined' ? ENV_CLAUDE_API_KEY : ''
 
 // Allowed user IDs (comma-separated list, e.g., "123456789,987654321")
 // If empty or not set, all users are allowed
 const ALLOWED_USERS = typeof ENV_ALLOWED_USERS !== 'undefined' ? ENV_ALLOWED_USERS : ''
 
-// Available Gemini models
-const AVAILABLE_MODELS = {
-  'flash': 'gemini-2.5-flash',
-  'flash-lite': 'gemini-2.5-flash-lite',
-  '3-flash': 'gemini-3-flash'
+// Available AI providers and their models
+const PROVIDERS = {
+  'gemini': {
+    name: 'Gemini',
+    models: {
+      'flash': 'gemini-2.5-flash',
+      'flash-lite': 'gemini-2.5-flash-lite',
+      '3-flash': 'gemini-3-flash'
+    },
+    defaultModel: 'gemini-2.5-flash'
+  },
+  'openai': {
+    name: 'OpenAI',
+    models: {
+      'gpt-4o': 'gpt-4o',
+      'gpt-4o-mini': 'gpt-4o-mini',
+      'gpt-4-turbo': 'gpt-4-turbo'
+    },
+    defaultModel: 'gpt-4o-mini'
+  },
+  'claude': {
+    name: 'Claude',
+    models: {
+      'sonnet': 'claude-sonnet-4-20250514',
+      'haiku': 'claude-3-5-haiku-20241022',
+      'opus': 'claude-3-opus-20240229'
+    },
+    defaultModel: 'claude-sonnet-4-20250514'
+  }
 }
-const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DEFAULT_PROVIDER = 'gemini'
 
 // Check if user is allowed
 function isUserAllowed(userId) {
@@ -98,68 +126,85 @@ async function onMessage (message) {
     return sendMarkdownV2Text(chatId, '*Functions:*\n' +
       escapeMarkdown(
         '`/help` - This message\n' +
-        '/gemini <text> - Ask Gemini AI\n' +
-        '/setmodel <model> - Set your default model\n' +
-        '/models - List available models\n' +
+        '/ai <text> - Ask AI (uses your selected provider)\n' +
+        '/providers - List/select AI providers\n' +
+        '/models - List/select models for current provider\n' +
         '/button2 - Sends two buttons\n' +
-        '/button4 - Sends four buttons\n' +
         'Any other text will trigger a random reaction!',
         '`'),
         [
-          [{ text: 'Ask Gemini (Fun Fact)', callback_data: 'ask_gemini' }]
+          [{ text: '🤖 Ask AI (Fun Fact)', callback_data: 'ask_ai' }]
         ]
       )
+  } else if (message.text && message.text.startsWith('/providers')) {
+    const userProvider = await getUserProvider(chatId)
+    // Create buttons for each provider
+    const providerButtons = Object.entries(PROVIDERS).map(([key, provider]) => [{
+      text: `${key === userProvider ? '✅ ' : ''}${provider.name}`,
+      callback_data: `set_provider_${key}`
+    }])
+    return sendInlineButtons(chatId, `<b>🔌 Select AI Provider:</b>\n\n<i>Current: ${PROVIDERS[userProvider]?.name || userProvider}</i>`, providerButtons, 'HTML')
   } else if (message.text && message.text.startsWith('/models')) {
+    const userProvider = await getUserProvider(chatId)
     const userModel = await getUserModel(chatId)
-    // Create buttons for each model
-    const modelButtons = Object.entries(AVAILABLE_MODELS).map(([shortName, fullName]) => [{
+    const provider = PROVIDERS[userProvider]
+    if (!provider) {
+      return sendPlainText(chatId, 'Invalid provider selected.')
+    }
+    // Create buttons for each model in the current provider
+    const modelButtons = Object.entries(provider.models).map(([shortName, fullName]) => [{
       text: `${fullName === userModel ? '✅ ' : ''}${shortName}`,
       callback_data: `set_model_${shortName}`
     }])
-    return sendInlineButtons(chatId, `<b>📋 Select a Model:</b>\n\n<i>Current: ${userModel}</i>`, modelButtons, 'HTML')
-  } else if (message.text && message.text.startsWith('/setmodel')) {
-    const modelShortName = message.text.replace('/setmodel', '').trim()
-    if (!modelShortName) {
-      const userModel = await getUserModel(chatId)
-      return sendHtmlText(chatId, `<b>Current model:</b> ${userModel}\n\n<i>Usage: /setmodel flash-lite or use /models</i>`)
-    }
-    if (!AVAILABLE_MODELS[modelShortName]) {
-      return sendPlainText(chatId, `Unknown model: ${modelShortName}. Use /models to see available options.`)
-    }
-    await setUserModel(chatId, AVAILABLE_MODELS[modelShortName])
-    return sendHtmlText(chatId, `✅ Model set to <b>${AVAILABLE_MODELS[modelShortName]}</b>`)
+    return sendInlineButtons(chatId, `<b>📋 ${provider.name} Models:</b>\n\n<i>Current: ${userModel}</i>`, modelButtons, 'HTML')
   } else if (message.text && message.text.startsWith('/button2')) {
     return sendTwoButtons(chatId)
   } else if (message.text && message.text.startsWith('/button4')) {
     return sendFourButtons(chatId)
-  } else if (message.text && message.text.startsWith('/markdown')) {
-    return sendMarkdownExample(chatId)
-  } else if (message.text && message.text.startsWith('/gemini')) {
-    const prompt = message.text.replace('/gemini', '').trim()
+  } else if (message.text && message.text.startsWith('/ai')) {
+    const prompt = message.text.replace('/ai', '').trim()
     if (!prompt) {
-      return sendPlainText(chatId, 'Please provide a prompt. Example: /gemini What is the moon?')
+      return sendPlainText(chatId, 'Please provide a prompt. Example: /ai What is the moon?')
     }
-    const userModel = await getUserModel(chatId)
-    return handleGeminiRequest(chatId, prompt, userModel)
+    return handleAIRequest(chatId, prompt)
   } else {
     // Random reaction for other messages
     return setMessageReaction(message)
   }
 }
 
-// --- User Model Storage (using KV) ---
+// --- User Settings Storage (using KV) ---
+
+async function getUserProvider(chatId) {
+  if (typeof NAMESPACE === 'undefined') {
+    return DEFAULT_PROVIDER
+  }
+  const provider = await NAMESPACE.get(`provider_${chatId}`)
+  return provider || DEFAULT_PROVIDER
+}
+
+async function setUserProvider(chatId, provider) {
+  if (typeof NAMESPACE === 'undefined') {
+    throw new Error('KV NAMESPACE not configured.')
+  }
+  await NAMESPACE.put(`provider_${chatId}`, provider)
+  // Also reset model to provider's default
+  await NAMESPACE.put(`model_${chatId}`, PROVIDERS[provider].defaultModel)
+}
 
 async function getUserModel(chatId) {
   if (typeof NAMESPACE === 'undefined') {
-    return DEFAULT_MODEL
+    return PROVIDERS[DEFAULT_PROVIDER].defaultModel
   }
   const model = await NAMESPACE.get(`model_${chatId}`)
-  return model || DEFAULT_MODEL
+  if (model) return model
+  const provider = await getUserProvider(chatId)
+  return PROVIDERS[provider]?.defaultModel || PROVIDERS[DEFAULT_PROVIDER].defaultModel
 }
 
 async function setUserModel(chatId, model) {
   if (typeof NAMESPACE === 'undefined') {
-    throw new Error('KV NAMESPACE not configured. Cannot save model preference.')
+    throw new Error('KV NAMESPACE not configured.')
   }
   await NAMESPACE.put(`model_${chatId}`, model)
 }
@@ -178,19 +223,32 @@ async function onCallbackQuery (callbackQuery) {
     return answerCallbackQuery(callbackQuery.id, '🚫 Access denied.')
   }
   
-  if (callbackQuery.data === 'ask_gemini') {
-    await answerCallbackQuery(callbackQuery.id, 'Asking Gemini...')
-    const userModel = await getUserModel(chatId)
-    return handleGeminiRequest(chatId, 'Tell me a random fun fact.', userModel)
+  if (callbackQuery.data === 'ask_ai') {
+    await answerCallbackQuery(callbackQuery.id, 'Asking AI...')
+    return handleAIRequest(chatId, 'Tell me a random fun fact.')
   }
   
-  // Handle model selection: set_model_flash, set_model_flash-lite, etc.
+  // Handle provider selection: set_provider_gemini, set_provider_openai, etc.
+  if (callbackQuery.data.startsWith('set_provider_')) {
+    const providerKey = callbackQuery.data.replace('set_provider_', '')
+    if (PROVIDERS[providerKey]) {
+      await setUserProvider(chatId, providerKey)
+      await answerCallbackQuery(callbackQuery.id, `Provider set to ${PROVIDERS[providerKey].name}!`)
+      return sendHtmlText(chatId, `✅ Provider set to <b>${PROVIDERS[providerKey].name}</b>\n<i>Model reset to ${PROVIDERS[providerKey].defaultModel}</i>`)
+    } else {
+      return answerCallbackQuery(callbackQuery.id, 'Unknown provider.')
+    }
+  }
+  
+  // Handle model selection: set_model_flash, set_model_gpt-4o, etc.
   if (callbackQuery.data.startsWith('set_model_')) {
     const modelShortName = callbackQuery.data.replace('set_model_', '')
-    if (AVAILABLE_MODELS[modelShortName]) {
-      await setUserModel(chatId, AVAILABLE_MODELS[modelShortName])
+    const userProvider = await getUserProvider(chatId)
+    const provider = PROVIDERS[userProvider]
+    if (provider && provider.models[modelShortName]) {
+      await setUserModel(chatId, provider.models[modelShortName])
       await answerCallbackQuery(callbackQuery.id, `Model set to ${modelShortName}!`)
-      return sendHtmlText(chatId, `✅ Model set to <b>${AVAILABLE_MODELS[modelShortName]}</b>`)
+      return sendHtmlText(chatId, `✅ Model set to <b>${provider.models[modelShortName]}</b>`)
     } else {
       return answerCallbackQuery(callbackQuery.id, 'Unknown model.')
     }
@@ -241,57 +299,68 @@ async function onInlineQuery (inlineQuery) {
 
 // --- Helper Functions ---
 
-async function handleGeminiRequest(chatId, prompt, model = DEFAULT_MODEL) {
-  if (!GEMINI_KEY) {
-    return sendPlainText(chatId, 'Error: GEMINI_API_KEY is not set.')
+// Main AI request handler - routes to the correct provider
+async function handleAIRequest(chatId, prompt) {
+  const provider = await getUserProvider(chatId)
+  const model = await getUserModel(chatId)
+  
+  const providerConfig = PROVIDERS[provider]
+  if (!providerConfig) {
+    return sendPlainText(chatId, 'Invalid provider selected.')
   }
   
-  await sendPlainText(chatId, `🤔 Thinking... (using ${model})`)
+  await sendPlainText(chatId, `🤔 Thinking... (${providerConfig.name}: ${model})`)
   
   try {
-    const { thinking, response } = await callGemini(prompt, model)
+    let response
+    switch (provider) {
+      case 'gemini':
+        if (!GEMINI_KEY) return sendPlainText(chatId, 'Error: GEMINI_API_KEY is not set.')
+        response = await callGemini(prompt, model)
+        break
+      case 'openai':
+        if (!OPENAI_KEY) return sendPlainText(chatId, 'Error: OPENAI_API_KEY is not set.')
+        response = await callOpenAI(prompt, model)
+        break
+      case 'claude':
+        if (!CLAUDE_KEY) return sendPlainText(chatId, 'Error: CLAUDE_API_KEY is not set.')
+        response = await callClaude(prompt, model)
+        break
+      default:
+        return sendPlainText(chatId, 'Unknown provider.')
+    }
     
-    // Send thinking process if available (collapsed/shorter)
-    if (thinking) {
-      const thinkingHtml = `<b>💭 Thinking Process:</b>\n<i>${escapeHtml(thinking.substring(0, 1000))}${thinking.length > 1000 ? '...' : ''}</i>`
+    // Send thinking process if available
+    if (response.thinking) {
+      const thinkingHtml = `<b>💭 Thinking:</b>\n<i>${escapeHtml(response.thinking.substring(0, 1000))}${response.thinking.length > 1000 ? '...' : ''}</i>`
       await sendLongHtmlText(chatId, thinkingHtml)
     }
     
-    // Send the main response with HTML formatting
-    if (response) {
-      const responseHtml = `<b>💬 Response:</b>\n${markdownToHtml(response)}`
+    // Send the main response
+    if (response.content) {
+      const responseHtml = `<b>💬 ${providerConfig.name}:</b>\n${markdownToHtml(response.content)}`
       await sendLongHtmlText(chatId, responseHtml)
     } else {
-      await sendPlainText(chatId, 'No response from Gemini.')
+      await sendPlainText(chatId, 'No response from AI.')
     }
   } catch (error) {
-    await sendPlainText(chatId, `Error calling Gemini: ${error.message}`)
+    await sendPlainText(chatId, `Error: ${error.message}`)
   }
 }
 
-async function callGemini(prompt, model = DEFAULT_MODEL) {
+// Gemini API call
+async function callGemini(prompt, model) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 55000) // 55s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 55000)
 
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          thinkingConfig: {
-            thinkingBudget: 1024 // Enable thinking with a budget
-          }
-        }
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { thinkingConfig: { thinkingBudget: 1024 } }
       }),
       signal: controller.signal
     })
@@ -302,30 +371,96 @@ async function callGemini(prompt, model = DEFAULT_MODEL) {
     }
     
     const data = await response.json()
+    let thinking = '', content = ''
     
-    let thinkingContent = ''
-    let responseContent = ''
-    
-    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts) {
+    if (data.candidates?.[0]?.content?.parts) {
       for (const part of data.candidates[0].content.parts) {
-        if (part.thought === true) {
-          thinkingContent += part.text + '\n'
-        } else if (part.text) {
-          responseContent += part.text + '\n'
-        }
+        if (part.thought) thinking += part.text || ''
+        else content += part.text || ''
       }
     }
     
-    return { thinking: thinkingContent.trim(), response: responseContent.trim() }
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error('Request timed out.')
-    }
-    throw error
+    return { thinking, content }
   } finally {
     clearTimeout(timeoutId)
   }
 }
+
+// OpenAI API call
+async function callOpenAI(prompt, model) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 55000)
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_KEY}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4096
+      }),
+      signal: controller.signal
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`)
+    }
+    
+    const data = await response.json()
+    return { thinking: '', content: data.choices?.[0]?.message?.content || '' }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+// Claude API call
+async function callClaude(prompt, model) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 55000)
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': CLAUDE_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }]
+      }),
+      signal: controller.signal
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Claude API Error: ${response.status} - ${errorText}`)
+    }
+    
+    const data = await response.json()
+    let thinking = '', content = ''
+    
+    // Claude can return thinking blocks
+    if (data.content) {
+      for (const block of data.content) {
+        if (block.type === 'thinking') thinking += block.thinking || ''
+        else if (block.type === 'text') content += block.text || ''
+      }
+    }
+    
+    return { thinking, content }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 
 async function sendLongPlainText(chatId, text) {
   const MAX_LENGTH = 4096
@@ -528,11 +663,10 @@ async function registerCommands() {
   const commands = [
     { command: 'start', description: 'Show help message' },
     { command: 'help', description: 'Show help message' },
-    { command: 'gemini', description: 'Ask Gemini AI' },
-    { command: 'setmodel', description: 'Set your default AI model' },
-    { command: 'models', description: 'List available AI models' },
-    { command: 'button2', description: 'Show two buttons' },
-    { command: 'button4', description: 'Show four buttons' }
+    { command: 'ai', description: 'Ask AI a question' },
+    { command: 'providers', description: 'Select AI provider' },
+    { command: 'models', description: 'Select AI model' },
+    { command: 'button2', description: 'Show two buttons' }
   ]
   
   const r = await fetch(`https://api.telegram.org/bot${TOKEN}/setMyCommands`, {
