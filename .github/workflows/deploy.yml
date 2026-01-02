@@ -13,6 +13,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Wrangler
+        run: npm install -g wrangler
+      
+      - name: Create KV Namespace if not exists
+        id: kv
+        run: |
+          # Try to list existing namespaces and find ours
+          EXISTING=$(wrangler kv:namespace list 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+          
+          if [ -z "$EXISTING" ]; then
+            # Create new namespace
+            OUTPUT=$(wrangler kv:namespace create BOT_SETTINGS 2>&1)
+            KV_ID=$(echo "$OUTPUT" | grep -o 'id = "[^"]*"' | cut -d'"' -f2)
+          else
+            KV_ID=$EXISTING
+          fi
+          
+          echo "KV_NAMESPACE_ID=$KV_ID" >> $GITHUB_OUTPUT
+          echo "KV Namespace ID: $KV_ID"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      
+      - name: Update wrangler.toml with KV binding
+        run: |
+          cat > wrangler.toml << EOF
+          name = "telegram-bot-cloudflare"
+          main = "bot.js"
+          compatibility_date = "2023-10-01"
+
+          [[kv_namespaces]]
+          binding = "NAMESPACE"
+          id = "${{ steps.kv.outputs.KV_NAMESPACE_ID }}"
+          EOF
+      
       - name: Deploy with Wrangler
         uses: cloudflare/wrangler-action@v3
         with:
