@@ -4,3 +4,9 @@ compatibility_date = "2023-10-01"
 
 [vars]
 # Public variables can go here, but secrets should be set via `wrangler secret put` or GitHub Secrets
+
+# KV Namespace for Voice Files (Required for inline query)
+# Run `wrangler kv:namespace create NAMESPACE` to get the ID
+# [[kv_namespaces]]
+# binding = "NAMESPACE"
+# id = "YOUR_KV_NAMESPACE_ID"
