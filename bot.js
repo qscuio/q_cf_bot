@@ -159,14 +159,16 @@ async function handleGeminiRequest(chatId, prompt) {
   try {
     const { thinking, response } = await callGemini(prompt)
     
-    // Send thinking process if available
+    // Send thinking process if available (collapsed/shorter)
     if (thinking) {
-      await sendLongPlainText(chatId, `💭 Thinking Process:\n${thinking}`)
+      const thinkingHtml = `<b>💭 Thinking Process:</b>\n<i>${escapeHtml(thinking.substring(0, 1000))}${thinking.length > 1000 ? '...' : ''}</i>`
+      await sendLongHtmlText(chatId, thinkingHtml)
     }
     
-    // Send the main response
+    // Send the main response with HTML formatting
     if (response) {
-      await sendLongPlainText(chatId, `💬 Response:\n${response}`)
+      const responseHtml = `<b>💬 Response:</b>\n${markdownToHtml(response)}`
+      await sendLongHtmlText(chatId, responseHtml)
     } else {
       await sendPlainText(chatId, 'No response from Gemini.')
     }
@@ -238,6 +240,48 @@ async function sendLongPlainText(chatId, text) {
   for (let i = 0; i < text.length; i += MAX_LENGTH) {
     await sendPlainText(chatId, text.substring(i, i + MAX_LENGTH))
   }
+}
+
+async function sendLongHtmlText(chatId, text) {
+  const MAX_LENGTH = 4096
+  for (let i = 0; i < text.length; i += MAX_LENGTH) {
+    await sendHtmlText(chatId, text.substring(i, i + MAX_LENGTH))
+  }
+}
+
+async function sendHtmlText(chatId, text) {
+  return (await fetch(apiUrl('sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML'
+  }))).json()
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function markdownToHtml(str) {
+  return escapeHtml(str)
+    // Bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/__(.+?)__/g, '<b>$1</b>')
+    // Italic: *text* or _text_
+    .replace(/\*(.+?)\*/g, '<i>$1</i>')
+    .replace(/_(.+?)_/g, '<i>$1</i>')
+    // Code blocks: ```code```
+    .replace(/```[\w]*\n?([\s\S]+?)```/g, '<pre>$1</pre>')
+    // Inline code: `code`
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    // Headers: # text -> bold
+    .replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>')
+    // Lists: * item or - item
+    .replace(/^\s*[\*\-]\s+(.+)$/gm, '• $1')
+    // Numbered lists: 1. item
+    .replace(/^\s*(\d+)\.\s+(.+)$/gm, '$1. $2')
 }
 
 function sendTwoButtons (chatId) {
