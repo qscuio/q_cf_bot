@@ -53,16 +53,19 @@ Go to your GitHub repo → **Settings** → **Secrets and variables** → **Acti
 
 Add these secrets:
 
-| Secret Name             | Description                        | Example          |
-| ----------------------- | ---------------------------------- | ---------------- |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token               | `abc123...`      |
-| `CLOUDFLARE_ACCOUNT_ID` | 32-character hex Account ID        | `1a2b3c4d...`    |
-| `WORKERS_SUBDOMAIN`     | Your workers.dev subdomain         | `mysubdomain`    |
-| `ENV_BOT_TOKEN`         | Telegram Bot Token from BotFather  | `123456:ABC...`  |
-| `ENV_BOT_SECRET`        | Random string for webhook security | `MySecretKey123` |
-| `GEMINI_API_KEY`        | Google Gemini API Key              | `AIza...`        |
+| Secret Name             | Description                                  | Example               |
+| ----------------------- | -------------------------------------------- | --------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API Token                         | `abc123...`           |
+| `CLOUDFLARE_ACCOUNT_ID` | 32-character hex Account ID                  | `1a2b3c4d...`         |
+| `WORKERS_SUBDOMAIN`     | Your workers.dev subdomain                   | `mysubdomain`         |
+| `ENV_BOT_TOKEN`         | Telegram Bot Token from BotFather            | `123456:ABC...`       |
+| `ENV_BOT_SECRET`        | Random string for webhook security           | `MySecretKey123`      |
+| `GEMINI_API_KEY`        | Google Gemini API Key                        | `AIza...`             |
+| `ALLOWED_USERS`         | Comma-separated Telegram user IDs (optional) | `123456789,987654321` |
 
 > **Note:** `ENV_BOT_SECRET` can be any string with A-Z, a-z, 0-9, `_`, `-`.
+
+> **Note:** `ALLOWED_USERS` is optional. If not set, all users can use the bot. To get your Telegram user ID, message [@userinfobot](https://t.me/userinfobot).
 
 ### Step 6: Deploy
 

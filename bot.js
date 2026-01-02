@@ -7,6 +7,10 @@ const WEBHOOK = '/endpoint'
 const SECRET = ENV_BOT_SECRET // A-Z, a-z, 0-9, _ and -
 const GEMINI_KEY = ENV_GEMINI_API_KEY // Get it from https://aistudio.google.com/
 
+// Allowed user IDs (comma-separated list, e.g., "123456789,987654321")
+// If empty or not set, all users are allowed
+const ALLOWED_USERS = typeof ENV_ALLOWED_USERS !== 'undefined' ? ENV_ALLOWED_USERS : ''
+
 // Available Gemini models
 const AVAILABLE_MODELS = {
   'flash': 'gemini-2.5-flash',
@@ -14,6 +18,15 @@ const AVAILABLE_MODELS = {
   '3-flash': 'gemini-3-flash'
 }
 const DEFAULT_MODEL = 'gemini-2.5-flash'
+
+// Check if user is allowed
+function isUserAllowed(userId) {
+  if (!ALLOWED_USERS || ALLOWED_USERS.trim() === '') {
+    return true // No restriction if ALLOWED_USERS is not set
+  }
+  const allowedList = ALLOWED_USERS.split(',').map(id => id.trim())
+  return allowedList.includes(String(userId))
+}
 
 const reactions_ = ['👍', '👎', '❤', '🔥', '🥰', '👏', '😁', '🤔', '🤯', '😱', '🤬', '😢', '🎉', '🤩', '🤮', '💩', '🙏', '👌', '🕊', '🤡', '🥱', '🥴', '😍', '🐳', '❤‍🔥', '🌚', '🌭', '💯', '🤣', '⚡', '🍌', '🏆', '💔', '🤨', '😐', '🍓', '🍾', '💋', '🖕', '😈', '😴', '😭', '🤓', '👻', '👨‍💻', '👀', '🎃', '🙈', '😇', '😨', '🤝', '✍', '🤗', '🫡', '🎅', '🎄', '☃', '💅', '🤪', '🗿', '🆒', '💘', '🙉', '🦄', '😘', '💊', '🙊', '😎', '👾', '🤷‍♂', '🤷', '🤷‍♀', '😡']
 
@@ -74,6 +87,12 @@ async function onUpdate (update) {
  */
 async function onMessage (message) {
   const chatId = message.chat.id
+  const userId = message.from?.id
+  
+  // Check if user is allowed
+  if (!isUserAllowed(userId)) {
+    return sendPlainText(chatId, '🚫 Access denied. You are not authorized to use this bot.')
+  }
   
   if (message.text && (message.text.startsWith('/start') || message.text.startsWith('/help'))) {
     return sendMarkdownV2Text(chatId, '*Functions:*\n' +
@@ -152,6 +171,12 @@ async function setUserModel(chatId, model) {
  */
 async function onCallbackQuery (callbackQuery) {
   const chatId = callbackQuery.message.chat.id
+  const userId = callbackQuery.from?.id
+  
+  // Check if user is allowed
+  if (!isUserAllowed(userId)) {
+    return answerCallbackQuery(callbackQuery.id, '🚫 Access denied.')
+  }
   
   if (callbackQuery.data === 'ask_gemini') {
     await answerCallbackQuery(callbackQuery.id, 'Asking Gemini...')
