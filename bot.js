@@ -162,7 +162,8 @@ async function handleGeminiRequest(chatId, prompt) {
     try {
         await sendMarkdownV2Text(chatId, escapeMarkdown(response, '`'))
     } catch (e) {
-        await sendPlainText(chatId, response)
+        // Fallback to plain text, splitting if necessary
+        await sendLongPlainText(chatId, response)
     }
   } catch (error) {
     await sendPlainText(chatId, `Error calling Gemini: ${error.message}`)
@@ -171,30 +172,50 @@ async function handleGeminiRequest(chatId, prompt) {
 
 async function callGemini(prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: prompt
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 25000) // 25s timeout (Cloudflare worker limit is usually 30s)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
         }]
-      }]
+      }),
+      signal: controller.signal
     })
-  })
-  
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Gemini API Error: ${response.status} - ${errorText}`)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Gemini API Error: ${response.status} - ${errorText}`)
+    }
+    
+    const data = await response.json()
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts.length > 0) {
+      return data.candidates[0].content.parts[0].text
+    } else {
+      return 'No response from Gemini.'
+    }
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
-  
-  const data = await response.json()
-  if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts.length > 0) {
-    return data.candidates[0].content.parts[0].text
-  } else {
-    return 'No response from Gemini.'
+}
+
+async function sendLongPlainText(chatId, text) {
+  const MAX_LENGTH = 4096
+  for (let i = 0; i < text.length; i += MAX_LENGTH) {
+    await sendPlainText(chatId, text.substring(i, i + MAX_LENGTH))
   }
 }
 
